@@ -14,6 +14,7 @@
 
 # Install at system level if script run as root
 if [ "$(whoami)" = "root" ]; then
+    echo "Will install the binaries as system level for all users"
     CACHE_DIR=/var/cache/install-from-github
     DOWNLOAD_DIR=/tmp/install-from-github
     BINARY_DIR=/usr/local/bin
@@ -112,10 +113,6 @@ while [ "$#" -gt 0 ]; do case $1 in
         ;;
     -d | --dev)
         DEV=1
-        shift
-        ;;
-    -s | --system)
-        BINARY_DIR=/usr/local/bin
         shift
         ;;
     -p | --project-file)
