@@ -12,9 +12,19 @@
 # - for zip: unzip, zipfile, wc
 # - for tar.gz or tar.xz: tar, gz/xz, wc
 
-CACHE_DIR=~/.cache/install-from-github
-DOWNLOAD_DIR=~/Downloads
-BINARY_DIR=~/.local/bin
+# Install at system level if script run as root
+if [ "$(whoami)" = "root" ]; then
+    CACHE_DIR=/var/cache/install-from-github
+    DOWNLOAD_DIR=/tmp/install-from-github
+    BINARY_DIR=/usr/local/bin
+    if [ ! -d "$BINARY_DIR" ]; then
+        BINARY_DIR=/usr/bin
+    fi
+else
+    CACHE_DIR=~/.cache/install-from-github
+    DOWNLOAD_DIR=~/Downloads/install-from-github
+    BINARY_DIR=~/.local/bin
+fi
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
@@ -32,11 +42,17 @@ BLUE=$(printf '\033[0;34m')
 BOLD=$(printf '\033[1m')
 RESET=$(printf '\033[0m')
 
-header() { echo ; echo "${MAGENTA}$1${RESET}" ; }
-warn()   { echo "  ${YELLOW}$1${RESET}" ; }
-info()   { echo "  ${BLUE}$1${RESET}" ; }
-error()  { echo "${RED}$1${RESET}" >&2 ; }
-die()    { error "$1" ; exit 1 ; }
+header() {
+    echo
+    echo "${MAGENTA}$1${RESET}"
+}
+warn() { echo "  ${YELLOW}$1${RESET}"; }
+info() { echo "  ${BLUE}$1${RESET}"; }
+error() { echo "${RED}$1${RESET}" >&2; }
+die() {
+    error "$1"
+    exit 1
+}
 
 usage() {
     echo "Download latest deb/rpm/apk package (if available) or archive otherwise
@@ -57,6 +73,8 @@ OPTIONS
                                    available
   -p, --project-file projects.txt  read projects from file projects.txt
                                    (one project per line)
+  -b, --bin-dir                    target binary directory (default: $BINARY_DIR)
+  -c, --clean                      Clean download dir $DOWNLOAD_DIR and exit
   -d, --dev                        development mode: use already downloaded
                                    asset lists (if possible) and skip download
                                    of packages/archives (for testing filters)
@@ -66,19 +84,61 @@ This script's homepage: <https://github.com/MaxGyver83/install-from-github/>
 }
 
 while [ "$#" -gt 0 ]; do case $1 in
-    -h|--help) usage; exit 0; shift;;
-    -v|--verbose) VERBOSE=1; shift;;
-    -vv|--extra-verbose) EXTRA_VERBOSE=1; VERBOSE=1; shift;;
-    -a|--archives-only) ARCHIVES_ONLY=1; shift;;
-    -m|--prefer-musl) PREFER_MUSL=1; shift;;
-    -d|--dev) DEV=1; shift;;
-    -p|--project-file) PROJECT_FILE="$(realpath "$2")"; shift; shift;;
-    *) break;
-esac; done
+    -h | --help)
+        usage
+        exit 0
+        shift
+        ;;
+    -v | --verbose)
+        VERBOSE=1
+        shift
+        ;;
+    -vv | --extra-verbose)
+        EXTRA_VERBOSE=1
+        VERBOSE=1
+        shift
+        ;;
+    -a | --archives-only)
+        ARCHIVES_ONLY=1
+        shift
+        ;;
+    -m | --prefer-musl)
+        PREFER_MUSL=1
+        shift
+        ;;
+    -c | --clean)
+        CLEAN=1
+        shift
+        ;;
+    -d | --dev)
+        DEV=1
+        shift
+        ;;
+    -s | --system)
+        BINARY_DIR=/usr/local/bin
+        shift
+        ;;
+    -p | --project-file)
+        PROJECT_FILE="$(realpath "$2")"
+        shift
+        shift
+        ;;
+    *) break ;;
+    esac done
 
 [ "$(id -u)" -eq 0 ] && IS_ROOT=1
 [ $VERBOSE ] || WGET="$WGET -o /dev/null"
 [ $EXTRA_VERBOSE ] && set -x
+
+if [ $CLEAN ]; then
+    echo "Cleaning download dir $DOWNLOAD_DIR"
+    if [ $VERBOSE ]; then
+        rm -v -r ${DOWNLOAD_DIR:?}/*
+    else
+        rm -r ${DOWNLOAD_DIR:?}/*
+    fi
+    exit 0
+fi
 
 if [ -f /etc/debian_version ]; then
     PACKAGE_FILETYPE="deb"
@@ -93,24 +153,23 @@ elif [ -f /etc/alpine-release ]; then
 fi
 
 if [ "$INSTALL_CMD" ] && [ ! $IS_ROOT ]; then
-    if command -v sudo > /dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1; then
         INSTALL_CMD="sudo $INSTALL_CMD"
-    elif command -v doas > /dev/null 2>&1; then
+    elif command -v doas >/dev/null 2>&1; then
         INSTALL_CMD="doas $INSTALL_CMD"
     fi
 fi
 
-
 is_binary() {
-    readelf --file-header "$1" > /dev/null 2>&1
+    readelf --file-header "$1" >/dev/null 2>&1
 }
 
 is_in_PATH() {
     case "$PATH" in
-        *":$1:"*) return 0 ;;
-        *":$1") return 0 ;;
-        "$1:"*) return 0 ;;
-        *) return 1 ;;
+    *":$1:"*) return 0 ;;
+    *":$1") return 0 ;;
+    "$1:"*) return 0 ;;
+    *) return 1 ;;
     esac
 }
 
@@ -120,15 +179,15 @@ download_asset_list() {
     # in development mode, use cached asset list if available
     [ $DEV ] && [ -f "$filename" ] && return 0
     info "Downloading asset list ..."
-    $WGET -O "$filename" "https://api.github.com/repos/$project/releases/latest"  || return 1
+    $WGET -O "$filename" "https://api.github.com/repos/$project/releases/latest" || return 1
 }
 
 download_and_install_package() {
     project="$1"
     filename="$2"
-    all_packages="$(grep browser_download_url "$filename" \
-        | awk '{ print $2 }' | tr -d '"' \
-        | grep -E "\.${PACKAGE_FILETYPE}\$")"
+    all_packages="$(grep browser_download_url "$filename" |
+        awk '{ print $2 }' | tr -d '"' |
+        grep -E "\.${PACKAGE_FILETYPE}\$")"
     if [ -z "$all_packages" ]; then
         warn "No ${PACKAGE_FILETYPE} package available. Checking for archive ..."
         return 1
@@ -136,9 +195,9 @@ download_and_install_package() {
     count="$(echo "$all_packages" | wc -l)"
     if [ "$count" -gt 1 ]; then
         # only 64 bit, no arm, ppc
-        package="$(echo "$all_packages" \
-            | grep -E "$ACCEPT_FILTER" \
-            | grep -E -i -v "$IGNORE_FILTER_PACKAGE")"
+        package="$(echo "$all_packages" |
+            grep -E "$ACCEPT_FILTER" |
+            grep -E -i -v "$IGNORE_FILTER_PACKAGE")"
     else
         package="$all_packages"
     fi
@@ -176,10 +235,25 @@ download_and_install_package() {
 
 extract_archive() {
     case $1 in
-        *.tar.gz) filetype='.tar.gz'; cmd='tar -xzf'; dir_flag='-C' ;;
-        *.tar.xz) filetype='.tar.xz'; cmd='tar -xJf'; dir_flag='-C' ;;
-        *.zip)    filetype='.zip';    cmd='unzip -q'; dir_flag='-d' ;;
-        *)        warn "Unknown archive file type!" ; return ;;
+    *.tar.gz)
+        filetype='.tar.gz'
+        cmd='tar -xzf'
+        dir_flag='-C'
+        ;;
+    *.tar.xz)
+        filetype='.tar.xz'
+        cmd='tar -xJf'
+        dir_flag='-C'
+        ;;
+    *.zip)
+        filetype='.zip'
+        cmd='unzip -q'
+        dir_flag='-d'
+        ;;
+    *)
+        warn "Unknown archive file type!"
+        return
+        ;;
     esac
 
     # extract into new subfolder
@@ -202,10 +276,10 @@ download_and_extract_archive() {
     project="$1"
     filename="$2"
 
-    archive=$(grep browser_download_url "$filename" \
-        | awk '{ print $2 }' | tr -d '"' \
-        | grep -e "$ACCEPT_FILTER" \
-        | grep -E -i -v "$IGNORE_FILTER_ARCHIVE")
+    archive=$(grep browser_download_url "$filename" |
+        awk '{ print $2 }' | tr -d '"' |
+        grep -e "$ACCEPT_FILTER" |
+        grep -E -i -v "$IGNORE_FILTER_ARCHIVE")
     count="$(echo "$archive" | wc -l)"
     if [ "$count" -gt 1 ]; then
         if [ $PREFER_MUSL ]; then
@@ -238,13 +312,12 @@ download_and_extract_archive() {
     AT_LEAST_ON_BINARY_COPIED=1
 }
 
-
 # shellcheck disable=SC2015 # die when either mkdir or cd fails
-mkdir -p "$DOWNLOAD_DIR" && cd "$DOWNLOAD_DIR" \
-    || die "Could not create/change into $DOWNLOAD_DIR!"
+mkdir -p "$DOWNLOAD_DIR" && cd "$DOWNLOAD_DIR" ||
+    die "Could not create/change into $DOWNLOAD_DIR!"
 
-mkdir -p "$CACHE_DIR" \
-    || die "Could not create $CACHE_DIR!"
+mkdir -p "$CACHE_DIR" ||
+    die "Could not create $CACHE_DIR!"
 
 if [ "$PROJECT_FILE" ]; then
     # ignore comments (everything after '#')
@@ -259,9 +332,12 @@ fi
 for project in $projects; do
     header "$project"
     filename="$CACHE_DIR/$(echo "$project" | tr / _)_assets.json"
-    download_asset_list "$project" "$filename" \
-        || die "Couldn't download asset file from GitHub!"
-    [ -s "$filename" ] || { warn "$filename is empty!"; continue; }
+    download_asset_list "$project" "$filename" ||
+        die "Couldn't download asset file from GitHub!"
+    [ -s "$filename" ] || {
+        warn "$filename is empty!"
+        continue
+    }
     if [ "$INSTALL_CMD" ] && [ ! $ARCHIVES_ONLY ]; then
         download_and_install_package "$project" "$filename" && continue
     fi
