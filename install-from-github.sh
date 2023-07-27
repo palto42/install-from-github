@@ -20,12 +20,12 @@ if [ "$(whoami)" = "root" ]; then
         BINARY_DIR=/usr/bin
     fi
 else
-
     BINARY_DIR=~/.local/bin
 fi
 
 CACHE_DIR=~/.cache/install-from-github
 DOWNLOAD_DIR=~/Downloads/install-from-github
+USER_PROJECTS=~/.config/install-from-github/projects.txt
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
@@ -339,6 +339,9 @@ if [ "$PROJECT_FILE" ]; then
     projects="$(grep -o '^[^#]*' "$PROJECT_FILE")"
 elif [ -n "$1" ]; then
     projects="$*"
+elif [ -e "$USER_PROJECTS" ]; then
+    warn "Using config file $USER_PROJECTS"
+    projects="$(grep -o '^[^#]*' "$USER_PROJECTS")"
 else
     usage
     exit 0

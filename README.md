@@ -38,6 +38,10 @@ This script will prefer deb/rpm/apk packages and install them with `[sudo] dpkg 
 
 Add `-m`/`--prefer-musl` if you prefer musl over glibc variants (when applicable). This is the default behaviour in Alpine Linux.
 
+### Default user config
+
+The user may store a default project file at `~/.config/install-from-github/config.ini`.
+
 ### Notes
 
 * Dependencies: wget, grep, awk, tr (and dpkg or unzip or tar + gz or xz)
