@@ -72,6 +72,7 @@ OPTIONS
   -a, --archives-only              skip searching for deb/rpm/apk packages first
   -m, --prefer-musl                pick musl package/archive if applicable and
                                    available
+  -f, --force                      force install
   -p, --project-file projects.txt  read projects from file projects.txt
                                    (one project per line)
   -b, --bin-dir                    target binary directory (default: $BINARY_DIR)
@@ -105,6 +106,11 @@ while [ "$#" -gt 0 ]; do case $1 in
         ;;
     -m | --prefer-musl)
         PREFER_MUSL=1
+        shift
+        ;;
+    -f | --force)
+        FORCE_INSTALL=1
+        warn "Force installing latest version"
         shift
         ;;
     -c | --clean)
@@ -355,19 +361,19 @@ for project in $projects; do
         continue
     }
     get_asset_version "$project" "$filename"
-    if [ "$last_version" = "$asset_version" ]; then
+    if [ "$last_version" = "$asset_version" ] && [ ! "$FORCE_INSTALL" ]; then
         echo "Project '$project' is already on latest version $asset_version"
         continue
     else
         echo "Found new version $asset_version for project '$project'"
-        if [ "$INSTALL_CMD" ] && [ ! $ARCHIVES_ONLY ]; then
+        if [ "$INSTALL_CMD" ] && [ ! "$ARCHIVES_ONLY" ]; then
             download_and_install_package "$project" "$filename" && continue
         fi
         download_and_extract_archive "$project" "$filename"
     fi
 done
 
-if [ $AT_LEAST_ON_BINARY_COPIED ] && ! is_in_PATH "$BINARY_DIR"; then
+if [ "$AT_LEAST_ON_BINARY_COPIED" ] && ! is_in_PATH "$BINARY_DIR"; then
     echo
     warn "$BINARY_DIR is not in \$PATH! Add it with
 PATH=\"$BINARY_DIR:\$PATH\""
