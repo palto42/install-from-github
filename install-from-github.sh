@@ -12,19 +12,9 @@
 # - for zip: unzip, zipfile, wc
 # - for tar.gz or tar.xz: tar, gz/xz, wc
 
-# Install at system level if script run as root
-if [ "$(whoami)" = "root" ]; then
-    echo "Will install the binaries as system level for all users"
-    BINARY_DIR=/usr/local/bin
-    if [ ! -d "$BINARY_DIR" ]; then
-        BINARY_DIR=/usr/bin
-    fi
-else
-    BINARY_DIR=~/.local/bin
-fi
-
 CACHE_DIR=~/.cache/install-from-github
 DOWNLOAD_DIR=~/Downloads/install-from-github
+BINARY_DIR=~/.local/bin
 USER_PROJECTS=~/.config/install-from-github/projects.txt
 
 ACCEPT_FILTER='64'
@@ -129,7 +119,16 @@ while [ "$#" -gt 0 ]; do case $1 in
     *) break ;;
     esac done
 
-[ "$(id -u)" -eq 0 ] && IS_ROOT=1
+if [ "$(id -u)" -eq 0 ]; then
+    IS_ROOT=1
+    # Install at system level if script run as root
+    warn "Will install the binaries as system level for all users"
+    if [ -d "/usr/local/bin" ]; then
+        BINARY_DIR=/usr/local/bin
+    else
+        BINARY_DIR=/usr/bin
+    fi
+fi
 [ $VERBOSE ] || WGET="$WGET -o /dev/null"
 [ $EXTRA_VERBOSE ] && set -x
 
