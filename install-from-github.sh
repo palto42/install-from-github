@@ -15,7 +15,8 @@
 CACHE_DIR=~/.cache/install-from-github
 DOWNLOAD_DIR=~/Downloads/install-from-github
 BINARY_DIR=~/.local/bin
-USER_PROJECTS=~/.config/install-from-github/projects.txt
+CONFIG_DIR=~/.config/install-from-github
+USER_PROJECTS="$CONFIG_DIR/projects.txt"
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
@@ -326,12 +327,23 @@ get_asset_version() {
     asset_version=${asset_version%\"*}
 }
 
+update_config() {
+    project="$1"
+    if [ -z "$PROJECT_FILE" ] && ! grep -q "^$project" "$USER_PROJECTS"; then
+        echo "$project # auto-added on $(date '+%Y-%m-%d  %H:%M:%S')" >>"$USER_PROJECTS"
+        info "Added '$project' to user project file $USER_PROJECTS"
+    fi
+}
+
 # shellcheck disable=SC2015 # die when either mkdir or cd fails
 mkdir -p "$DOWNLOAD_DIR" && cd "$DOWNLOAD_DIR" ||
     die "Could not create/change into $DOWNLOAD_DIR!"
 
 mkdir -p "$CACHE_DIR" ||
     die "Could not create $CACHE_DIR!"
+
+mkdir -p "$CONFIG_DIR" ||
+    die "Could not create $CONFIG_DIR!"
 
 if [ "$PROJECT_FILE" ]; then
     # ignore comments (everything after '#')
@@ -345,7 +357,6 @@ else
     usage
     exit 0
 fi
-
 for project in $projects; do
     header "$project"
     filename="$CACHE_DIR/$(echo "$project" | tr / _)_assets.json"
@@ -369,9 +380,12 @@ for project in $projects; do
     else
         echo "Found new version $asset_version for project '$project'"
         if [ "$INSTALL_CMD" ] && [ ! "$ARCHIVES_ONLY" ]; then
-            download_and_install_package "$project" "$filename" && continue
+            if download_and_install_package "$project"; then
+                "$filename" && update_config "$project"
+                continue
+            fi
         fi
-        download_and_extract_archive "$project" "$filename"
+        download_and_extract_archive "$project" "$filename" && update_config "$project"
     fi
 done
 
