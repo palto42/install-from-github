@@ -15,17 +15,17 @@
 # Install at system level if script run as root
 if [ "$(whoami)" = "root" ]; then
     echo "Will install the binaries as system level for all users"
-    CACHE_DIR=/var/cache/install-from-github
-    DOWNLOAD_DIR=/tmp/install-from-github
     BINARY_DIR=/usr/local/bin
     if [ ! -d "$BINARY_DIR" ]; then
         BINARY_DIR=/usr/bin
     fi
 else
-    CACHE_DIR=~/.cache/install-from-github
-    DOWNLOAD_DIR=~/Downloads/install-from-github
+
     BINARY_DIR=~/.local/bin
 fi
+
+CACHE_DIR=~/.cache/install-from-github
+DOWNLOAD_DIR=~/Downloads/install-from-github
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
@@ -309,6 +309,18 @@ download_and_extract_archive() {
     AT_LEAST_ON_BINARY_COPIED=1
 }
 
+get_asset_version() {
+    project="$1"
+    filename="$2"
+    tag_name=$(grep '"tag_name"' "$filename")
+    asset_version=${tag_name#*tag_name\": \"}
+    if [ "$asset_version" = "$tag_name" ]; then
+        echo "Failed to extract version from tag url: $tag_url"
+        return 1
+    fi
+    asset_version=${asset_version%\"*}
+}
+
 # shellcheck disable=SC2015 # die when either mkdir or cd fails
 mkdir -p "$DOWNLOAD_DIR" && cd "$DOWNLOAD_DIR" ||
     die "Could not create/change into $DOWNLOAD_DIR!"
@@ -329,16 +341,30 @@ fi
 for project in $projects; do
     header "$project"
     filename="$CACHE_DIR/$(echo "$project" | tr / _)_assets.json"
+    if get_asset_version "$project" "$filename"; then
+        last_version="$asset_version"
+    else
+        last_version="unknown"
+
+    fi
+    echo "Last version of $project '$last_version'"
     download_asset_list "$project" "$filename" ||
         die "Couldn't download asset file from GitHub!"
     [ -s "$filename" ] || {
         warn "$filename is empty!"
         continue
     }
-    if [ "$INSTALL_CMD" ] && [ ! $ARCHIVES_ONLY ]; then
-        download_and_install_package "$project" "$filename" && continue
+    get_asset_version "$project" "$filename"
+    if [ "$last_version" = "$asset_version" ]; then
+        echo "Project '$project' is already on latest version $asset_version"
+        continue
+    else
+        echo "Found new version $asset_version for project '$project'"
+        if [ "$INSTALL_CMD" ] && [ ! $ARCHIVES_ONLY ]; then
+            download_and_install_package "$project" "$filename" && continue
+        fi
+        download_and_extract_archive "$project" "$filename"
     fi
-    download_and_extract_archive "$project" "$filename"
 done
 
 if [ $AT_LEAST_ON_BINARY_COPIED ] && ! is_in_PATH "$BINARY_DIR"; then
