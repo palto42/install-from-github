@@ -13,6 +13,7 @@
 # - for tar.gz or tar.xz: tar, gz/xz, wc
 
 CACHE_DIR=~/.cache/install-from-github
+TMP_FILE="$CACHE_DIR/asset.txt"
 DOWNLOAD_DIR=~/Downloads/install-from-github
 BINARY_DIR=~/.local/bin
 CONFIG_DIR=~/.config/install-from-github
@@ -22,7 +23,7 @@ ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
 IGNORE_FILTER_ARCHIVE='mac|macos|darwin|apple|win|bsd|arm|aarch|ppc|i686|sha256|deb$|rpm$|apk$|sig$'
 
-WGET='wget'
+WGET="wget"
 WGET_ARGS='--continue --timestamping'
 # TODO: --timestamping only available in GNU wget!?
 # TODO: Use curl when wget is not available
@@ -31,6 +32,7 @@ RED=$(printf '\033[0;31m')
 MAGENTA=$(printf '\033[0;35m')
 YELLOW=$(printf '\033[0;33m')
 BLUE=$(printf '\033[0;34m')
+GREEN=$(printf '\033[0;32m')
 BOLD=$(printf '\033[1m')
 RESET=$(printf '\033[0m')
 
@@ -40,6 +42,7 @@ header() {
 }
 warn() { echo "  ${YELLOW}$1${RESET}"; }
 info() { echo "  ${BLUE}$1${RESET}"; }
+note() { echo "${GREEN}$1${RESET}"; }
 error() { echo "${RED}$1${RESET}" >&2; }
 die() {
     error "$1"
@@ -66,6 +69,7 @@ OPTIONS
   -f, --force                      force install
   -p, --project-file projects.txt  read projects from file projects.txt
                                    (one project per line)
+  -u, --update-project             Update project file with provided GITHUB_PROJECT(s)
   -b, --bin-dir                    target binary directory (default: $BINARY_DIR)
   -c, --clean                      Clean download dir $DOWNLOAD_DIR and exit
   -d, --dev                        development mode: use already downloaded
@@ -100,7 +104,7 @@ while [ "$#" -gt 0 ]; do case $1 in
         ;;
     -f | --force)
         FORCE_INSTALL=1
-        warn "Force installing latest version"
+        note "Force re-install latest version"
         shift
         ;;
     -c | --clean)
@@ -116,24 +120,28 @@ while [ "$#" -gt 0 ]; do case $1 in
         shift
         shift
         ;;
+    -u | --update-project)
+        UPDATE_PROJECT=1
+        shift
+        ;;
     *) break ;;
     esac done
 
 if [ "$(id -u)" -eq 0 ]; then
     IS_ROOT=1
     # Install at system level if script run as root
-    warn "Will install the binaries as system level for all users"
+    note "Will install the binaries as system level for all users"
     if [ -d "/usr/local/bin" ]; then
         BINARY_DIR=/usr/local/bin
     else
         BINARY_DIR=/usr/bin
     fi
 fi
-[ $VERBOSE ] || WGET="$WGET -o /dev/null"
+[ $VERBOSE ] || WGET_ARGS="$WGET_ARGS -o /dev/null"
 [ $EXTRA_VERBOSE ] && set -x
 
 if [ $CLEAN ]; then
-    echo "Cleaning download dir $DOWNLOAD_DIR"
+    note "Cleaning download dir $DOWNLOAD_DIR"
     if [ $VERBOSE ]; then
         rm -v -r ${DOWNLOAD_DIR:?}/*
     else
@@ -179,9 +187,17 @@ download_asset_list() {
     project="$1"
     filename="$2"
     # in development mode, use cached asset list if available
-    [ $DEV ] && [ -f "$filename" ] && return 0
+    [ "$DEV" ] && [ -f "$filename" ] && return 0
     info "Downloading asset list ..."
-    $WGET -O "$filename" "https://api.github.com/repos/$project/releases/latest" || return 1
+    if result=$($WGET --server-response -O "$TMP_FILE" "https://api.github.com/repos/$project/releases/latest" 2>&1); then
+        [ "$VERBOSE" ] && echo "$result"
+        mv "$TMP_FILE" "$filename"
+        return 0
+    fi
+    http_status=$(echo "$result" | grep "HTTP/")
+    error "Download error: $http_status"
+    [ "$VERBOSE" ] && echo "$result"
+    return 1
 }
 
 download_and_install_package() {
@@ -213,18 +229,18 @@ download_and_install_package() {
         fi
     fi
 
+    info "Found package: $package"
+
     count="$(echo "$package" | wc -l)"
     if [ -z "$package" ]; then
-        echo "  Skipped packages:
+        note "  Skipped packages:
         $all_packages"
         warn "${PACKAGE_FILETYPE}: No matches left after filtering. Checking for archive ..."
         return 1
     elif [ "$count" -gt 1 ]; then
-        echo "$package"
         warn "${PACKAGE_FILETYPE}: Too many matches left after filtering. Checking for archive ..."
         return 1
     fi
-    echo "$package"
     [ $DEV ] && return 0
     info "Downloading $(basename "$package") ..."
     $WGET $WGET_ARGS "$package"
@@ -295,11 +311,10 @@ download_and_extract_archive() {
         warn "archive: No matches left after filtering. Skipping $project."
         return 1
     elif [ "$count" -gt 1 ]; then
-        echo "$archive"
         warn "archive: Too many matches left after filtering. Skipping $project."
         return 1
     fi
-    echo "$archive"
+    info "Download archive: $archive"
     [ $DEV ] && return 0
     filename="$(basename "$archive")"
     [ -f "$DOWNLOAD_DIR/$filename" ] && rm -rf "${DOWNLOAD_DIR:?}/$filename"
@@ -317,11 +332,15 @@ download_and_extract_archive() {
 get_asset_version() {
     project="$1"
     filename="$2"
-    tag_name=$(grep '"tag_name"' "$filename")
-    tag_url=$(grep '"url"' "$filename")
+    if [ ! -e "$filename" ]; then
+        info "No cached asset file for '$project'"
+        return 1
+    fi
+    tag_name=$(grep '"tag_name"' "$filename" 2>/dev/null)
+    tag_url=$(grep '"url"' "$filename" 2>/dev/null)
     asset_version=${tag_name#*tag_name\": \"}
     if [ "$asset_version" = "$tag_name" ]; then
-        echo "Failed to extract version from tag url: $tag_url"
+        warn "Failed to extract version from tag url: $tag_url"
         return 1
     fi
     asset_version=${asset_version%\"*}
@@ -329,9 +348,14 @@ get_asset_version() {
 
 update_config() {
     project="$1"
-    if [ -z "$PROJECT_FILE" ] && ! grep -q "^$project" "$USER_PROJECTS"; then
-        echo "$project # auto-added on $(date '+%Y-%m-%d  %H:%M:%S')" >>"$USER_PROJECTS"
-        info "Added '$project' to user project file $USER_PROJECTS"
+    if ! grep -q "^$project" "$PROJECT_FILE"; then
+        if echo "$project # auto-added on $(date '+%Y-%m-%d  %H:%M:%S')" >>"$PROJECT_FILE"; then
+            warn "Added '$project' to project file $PROJECT_FILE"
+        else
+            warn "Failed to add '$project' to project file '$PROJECT_FILE'"
+        fi
+    else
+        warn "Project file $PROJECT_FILE already contained '$project'"
     fi
 }
 
@@ -348,44 +372,70 @@ mkdir -p "$CONFIG_DIR" ||
 if [ "$PROJECT_FILE" ]; then
     # ignore comments (everything after '#')
     projects="$(grep -o '^[^#]*' "$PROJECT_FILE")"
-elif [ -n "$1" ]; then
-    projects="$*"
-elif [ -e "$USER_PROJECTS" ]; then
+else
+    PROJECT_FILE="$USER_PROJECTS"
+fi
+
+if [ -n "$1" ]; then
+    # append specified projects
+    projects="${projects} $*"
+fi
+
+if [ ! "$projects" ]; then
     warn "Using config file $USER_PROJECTS"
     projects="$(grep -o '^[^#]*' "$USER_PROJECTS")"
-else
+fi
+
+if [ ! "$projects" ]; then
     usage
     exit 0
 fi
+
 for project in $projects; do
     header "$project"
-    filename="$CACHE_DIR/$(echo "$project" | tr / _)_assets.json"
-    if get_asset_version "$project" "$filename"; then
-        last_version="$asset_version"
-    else
-        last_version="unknown"
+    # Check if the project is not already done
+    if ! printf "%s" "$done_projects" | grep -q "$project"; then
+        # If not, add it to the done_projects array
+        done_projects="${done_projects} ${project}"
+        filename="$CACHE_DIR/$(echo "$project" | tr / _)_assets.json"
+        if get_asset_version "$project" "$filename"; then
+            last_version="$asset_version"
+            info "Last version of $project was '$last_version'"
+        else
+            last_version="unknown"
 
-    fi
-    echo "Last version of $project '$last_version'"
-    download_asset_list "$project" "$filename" ||
-        die "Couldn't download asset file from GitHub!"
-    [ -s "$filename" ] || {
-        warn "$filename is empty!"
-        continue
-    }
-    get_asset_version "$project" "$filename"
-    if [ "$last_version" = "$asset_version" ] && [ ! "$FORCE_INSTALL" ]; then
-        echo "Project '$project' is already on latest version $asset_version"
-        continue
-    else
-        echo "Found new version $asset_version for project '$project'"
-        if [ "$INSTALL_CMD" ] && [ ! "$ARCHIVES_ONLY" ]; then
-            if download_and_install_package "$project"; then
-                "$filename" && update_config "$project"
-                continue
+        fi
+        download_asset_list "$project" "$filename" ||
+            die "Couldn't download asset file from GitHub!"
+        [ -s "$filename" ] || {
+            warn "$filename is empty!"
+            continue
+        }
+        get_asset_version "$project" "$filename"
+        if [ "$last_version" = "$asset_version" ] && [ ! "$FORCE_INSTALL" ]; then
+            info "Project '$project' is already on latest version $asset_version"
+            if [ "$UPDATE_PROJECT" ]; then
+                update_config "$project"
+            fi
+            continue
+        else
+            if [ "$last_version" != "$asset_version" ]; then
+                info "Found new version $asset_version for project '$project'"
+            else
+                info "Force re-install version $asset_version for project '$project'"
+            fi
+            if [ "$INSTALL_CMD" ] && [ ! "$ARCHIVES_ONLY" ]; then
+                if download_and_install_package "$project" "$filename" && [ "$UPDATE_PROJECT" ]; then
+                    update_config "$project"
+                    continue
+                fi
+            fi
+            if download_and_extract_archive "$project" "$filename" && [ "$UPDATE_PROJECT" ]; then
+            update_config "$project"
             fi
         fi
-        download_and_extract_archive "$project" "$filename" && update_config "$project"
+    else
+        warn "Duplicate entry for $project, skipping."
     fi
 done
 

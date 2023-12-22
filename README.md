@@ -70,6 +70,7 @@ OPTIONS
   -f, --force                      force install
   -p, --project-file projects.txt  read projects from file projects.txt
                                    (one project per line)
+  -u, --update-project             Update project file with provided GITHUB_PROJECT(s)
   -b, --bin-dir                    target binary directory (default: ~/.local/bin)
   -c, --clean                      Clean download dir ~/Downloads/install-from-github and exit
   -d, --dev                        development mode: use already downloaded
