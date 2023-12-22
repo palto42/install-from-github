@@ -80,7 +80,6 @@ while [ "$#" -gt 0 ]; do case $1 in
     -h | --help)
         usage
         exit 0
-        shift
         ;;
     -v | --verbose)
         VERBOSE=1
@@ -319,6 +318,7 @@ get_asset_version() {
     project="$1"
     filename="$2"
     tag_name=$(grep '"tag_name"' "$filename")
+    tag_url=$(grep '"url"' "$filename")
     asset_version=${tag_name#*tag_name\": \"}
     if [ "$asset_version" = "$tag_name" ]; then
         echo "Failed to extract version from tag url: $tag_url"
