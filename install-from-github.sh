@@ -282,12 +282,14 @@ extract_archive() {
     info "Extracting $filename into $folder ..."
     $cmd "$filename" $dir_flag "$folder"
     # copy executables into $BINARY_DIR
-    find "$folder" -executable -type f -print0 | xargs -0 -I{} cp {} $BINARY_DIR
-    executables="$(find "$folder" -executable -type f)"
-    if [ -n "$executables" ]; then
-        filelist="$(echo "$executables" | while read -r file; do basename "$file"; done | xargs)"
-        info "Copied $BOLD$filelist$RESET$BLUE to $BINARY_DIR"
-    fi
+    find "$folder" -executable -type f -print0 | while IFS= read -r -d '' file ; do
+        if error_message=$(cp "$file" "$BINARY_DIR" 2>&1); then
+            info "Copied $BOLD$file$RESET$BLUE to $BINARY_DIR"
+        else
+            error "Copy $BOLD$file$RESET$RED to $BINARY_DIR failed:"
+            warn "$error_message"
+        fi
+    done
 }
 
 download_and_extract_archive() {
