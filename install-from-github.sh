@@ -348,7 +348,7 @@ get_asset_version() {
 
 update_config() {
     project="$1"
-    if ! grep -q "^$project" "$PROJECT_FILE"; then
+    if ! grep -q "^$project" "$PROJECT_FILE" 2>/dev/null; then
         if echo "$project # auto-added on $(date '+%Y-%m-%d  %H:%M:%S')" >>"$PROJECT_FILE"; then
             warn "Added '$project' to project file $PROJECT_FILE"
         else
