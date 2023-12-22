@@ -10,40 +10,78 @@ This script is for 64-bit (`x86_64`) Linux systems only. It should be easy to ma
 
 ![Screenshot of install-from-github.sh](https://maximilian-schillinger.de/img/install-from-github.png "Screenshot")
 
-## How to use
+## Installation
 
-Just clone this repository and run the script with the GitHub projects you want to install as parameters:
+### Clone this git repository
 
 ```sh
 git clone https://github.com/MaxGyver83/install-from-github
 cd install-from-github
+./install-from-github.sh
+```
+
+### Download script
+
+```sh
+wget https://raw.githubusercontent.com/MaxGyver83/install-from-github/main/install-from-github.sh
+chmod +x install-from-github.sh
+./install-from-github.sh
+```
+
+## Usage
+
+This script will prefer deb/rpm/apk packages and install them with `[sudo] dpkg -i PACKAGE` (or alike, in case you are using Debian/Ubuntu, RedHat or Alpine) and download + extract binary archives as a fallback. If you prefer binary archives (maybe because you don't have sudo rights), use the option `--archives-only` (or short: `-a`):
+
+```sh
 ./install-from-github.sh BurntSushi/ripgrep sharkdp/fd
 # or
 ./install-from-github.sh -p projects.txt
 ```
 
-... or without `git clone`:
-
-```sh
-wget https://raw.githubusercontent.com/MaxGyver83/install-from-github/main/install-from-github.sh
-chmod +x install-from-github.sh
-./install-from-github.sh BurntSushi/ripgrep sharkdp/fd
-```
-
-This script will prefer deb/rpm/apk packages and install them with `[sudo] dpkg -i PACKAGE` (or alike, in case you are using Debian/Ubuntu, RedHat or Alpine) and download + extract binary archives as a fallback. If you prefer binary archives (maybe because you don't have sudo rights), use the option `--archives-only` (or short: `-a`):
-
-```sh
-./install-from-github.sh -a BurntSushi/ripgrep sharkdp/fd
-```
-
 Add `-m`/`--prefer-musl` if you prefer musl over glibc variants (when applicable). This is the default behaviour in Alpine Linux.
+
+### Install at system level
+
+Run the script as `root` to install the programs at system level.
 
 ### Default user config
 
-The user may store a default project file at `~/.config/install-from-github/config.ini`.
+The user may store a default project file at `~/.config/install-from-github/projects.txt`.
 
-### Notes
+### Command options
+
+```console
+Download latest deb/rpm/apk package (if available) or archive otherwise
+for every given GITHUB_PROJECT to ~/Download/ and install/extract it.
+
+USAGE
+  ./install-from-github.sh [OPTIONS] GITHUB_PROJECTS
+
+EXAMPLE
+  ./install-from-github.sh -v -a BurntSushi/ripgrep sharkdp/fd
+
+OPTIONS
+  -h, --help                       show help
+  -v, --verbose                    print output of wget command
+  -vv, --extra-verbose             print every command (set -x), implies -v
+  -a, --archives-only              skip searching for deb/rpm/apk packages first
+  -m, --prefer-musl                pick musl package/archive if applicable and
+                                   available
+  -f, --force                      force install
+  -p, --project-file projects.txt  read projects from file projects.txt
+                                   (one project per line)
+  -b, --bin-dir                    target binary directory (default: ~/.local/bin)
+  -c, --clean                      Clean download dir ~/Downloads/install-from-github and exit
+  -d, --dev                        development mode: use already downloaded
+                                   asset lists (if possible) and skip download
+                                   of packages/archives (for testing filters)
+
+This script's homepage: <https://github.com/MaxGyver83/install-from-github/>
+```
+
+## Notes
 
 * Dependencies: wget, grep, awk, tr (and dpkg or unzip or tar + gz or xz)
 * If the script doesn't work as expected, try calling it with `-v` or `-vv`.
 * On Debian/Ubuntu/RedHat/Alpine: This script will try installing deb/rpm/apk packages using sudo or doas, asking for your password (cancel with Ctrl-c if you want to install later).
+* The script caches the release data of the downloaded scripts in `~/.cache/install-from-github` to avoid unnecessary re-installs.
