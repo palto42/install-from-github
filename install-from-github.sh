@@ -282,7 +282,7 @@ extract_archive() {
     info "Extracting $filename into $folder ..."
     $cmd "$filename" $dir_flag "$folder"
     # copy executables into $BINARY_DIR
-    find "$folder" -executable -type f -print0 | xargs -0 -I{} cp {} $BINARY_DIR
+    find "$folder" -executable -type f -print0 | xargs -0 -I{} cp {} "$BINARY_DIR" && find "$BINARY_DIR" -type f -exec chmod +x {} \;
     executables="$(find "$folder" -executable -type f)"
     if [ -n "$executables" ]; then
         filelist="$(echo "$executables" | while read -r file; do basename "$file"; done | xargs)"
