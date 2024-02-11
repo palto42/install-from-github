@@ -67,6 +67,7 @@ OPTIONS
   -m, --prefer-musl                pick musl package/archive if applicable and
                                    available
   -f, --force                      force install
+  -s, --system                     system install 
   -p, --project-file projects.txt  read projects from file projects.txt
                                    (one project per line)
   -u, --update-project             Update project file with provided GITHUB_PROJECT(s)
@@ -84,6 +85,13 @@ while [ "$#" -gt 0 ]; do case $1 in
     -h | --help)
         usage
         exit 0
+        ;;
+    -s | --system)
+        if [ "$(id -u)" -ne 0 ]; then
+            warn "Restart as sudo"
+            exec sudo "$0" "$@"
+        fi
+        shift
         ;;
     -v | --verbose)
         VERBOSE=1
@@ -130,7 +138,7 @@ while [ "$#" -gt 0 ]; do case $1 in
 if [ "$(id -u)" -eq 0 ]; then
     IS_ROOT=1
     # Install at system level if script run as root
-    note "Will install the binaries as system level for all users"
+    note "Will install the binaries at system level for all users"
     if [ -d "/usr/local/bin" ]; then
         BINARY_DIR=/usr/local/bin
     else
