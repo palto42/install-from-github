@@ -76,6 +76,7 @@ OPTIONS
   -d, --dev                        development mode: use already downloaded
                                    asset lists (if possible) and skip download
                                    of packages/archives (for testing filters)
+  -P, --proxy                          Specify proxy server to be used
 
 This script's homepage: <https://github.com/MaxGyver83/install-from-github/>
 "
@@ -130,6 +131,11 @@ while [ "$#" -gt 0 ]; do case $1 in
         ;;
     -u | --update-project)
         UPDATE_PROJECT=1
+        shift
+        ;;
+    -P | --proxy)
+        export https_proxy="$2"
+        shift
         shift
         ;;
     *) break ;;
@@ -288,6 +294,7 @@ extract_archive() {
     [ -d "$folder" ] && rm -rf "$folder"
     mkdir "$folder"
     info "Extracting $filename into $folder ..."
+    [ "$VERBOSE" ] && echo "Source dir: $(pwd)"
     $cmd "$filename" $dir_flag "$folder"
     # copy executables into $BINARY_DIR
     find "$folder" -executable -type f -print0 | xargs -0 -I{} cp {} "$BINARY_DIR" && find "$BINARY_DIR" -type f -exec chmod +x {} \;
