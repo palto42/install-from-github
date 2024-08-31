@@ -21,7 +21,7 @@ USER_PROJECTS="$CONFIG_DIR/projects.txt"
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
-IGNORE_FILTER_ARCHIVE='mac|macos|darwin|apple|win|bsd|arm|aarch|ppc|i686|sha256|deb$|rpm$|apk$|sig$'
+IGNORE_FILTER_ARCHIVE='mac|macos|darwin|apple|win|bsd|arm|aarch|ppc|i686|sha256|deb$|rpm$|apk$|sig$|proxy-linux'
 
 WGET="wget"
 WGET_ARGS='--continue --timestamping'
@@ -66,6 +66,7 @@ OPTIONS
   -a, --archives-only              skip searching for deb/rpm/apk packages first
   -m, --prefer-musl                pick musl package/archive if applicable and
                                    available
+  -A, --appimage                   pick AppImage if applicable and available
   -f, --force                      force install
   -s, --system                     system install 
   -p, --project-file projects.txt  read projects from file projects.txt
@@ -105,6 +106,10 @@ while [ "$#" -gt 0 ]; do case $1 in
         ;;
     -a | --archives-only)
         ARCHIVES_ONLY=1
+        shift
+        ;;
+    -A | --appimage)
+        APPIMAGE=1
         shift
         ;;
     -m | --prefer-musl)
@@ -308,7 +313,7 @@ extract_archive() {
 download_and_extract_archive() {
     project="$1"
     filename="$2"
-
+    info "Filter: $ACCEPT_FILTER"
     archive=$(grep browser_download_url "$filename" |
         awk '{ print $2 }' | tr -d '"' |
         grep -e "$ACCEPT_FILTER" |
@@ -317,8 +322,10 @@ download_and_extract_archive() {
     if [ "$count" -gt 1 ]; then
         if [ $PREFER_MUSL ]; then
             archive="$(echo "$archive" | grep musl)"
+        elif [ $APPIMAGE ]; then
+            archive="$(echo "$archive" | grep -i AppImage)"
         else
-            archive="$(echo "$archive" | grep -v musl)"
+            archive="$(echo "$archive" | grep -v musl | grep -vi AppImage)"
         fi
     fi
     count="$(echo "$archive" | wc -l)"
@@ -327,6 +334,7 @@ download_and_extract_archive() {
         return 1
     elif [ "$count" -gt 1 ]; then
         warn "archive: Too many matches left after filtering. Skipping $project."
+        info "Archives: $archive"
         return 1
     fi
     info "Download archive: $archive"
