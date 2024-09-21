@@ -21,7 +21,7 @@ USER_PROJECTS="$CONFIG_DIR/projects.txt"
 
 ACCEPT_FILTER='64'
 IGNORE_FILTER_PACKAGE='arm|ppc'
-IGNORE_FILTER_ARCHIVE='mac|macos|darwin|apple|win|bsd|arm|aarch|ppc|i686|sha256|deb$|rpm$|apk$|sig$|proxy-linux'
+IGNORE_FILTER_ARCHIVE='mac|macos|darwin|apple|win|bsd|arm|aarch|ppc|i686|sha256|deb$|rpm$|apk$|sig$|proxy-linux|mips64|riscv64|solaris'
 
 WGET="wget"
 WGET_ARGS='--continue --timestamping'
@@ -275,17 +275,28 @@ extract_archive() {
     *.tar.gz)
         filetype='.tar.gz'
         cmd='tar -xzf'
-        dir_flag='-C'
+        dir_flag='-C '
         ;;
     *.tar.xz)
         filetype='.tar.xz'
         cmd='tar -xJf'
-        dir_flag='-C'
+        dir_flag='-C '
         ;;
     *.zip)
         filetype='.zip'
-        cmd='unzip -q'
-        dir_flag='-d'
+        if command -v 7z &> /dev/null
+        then
+            cmd='7z x'
+            dir_flag='-o'
+        else
+            cmd='unzip -q'
+            dir_flag='-d '
+        fi
+        ;;
+    *.bz2)
+        filetype='.bz2'
+        cmd='7z x'
+        dir_flag='-o'
         ;;
     *)
         warn "Unknown archive file type!"
@@ -300,7 +311,27 @@ extract_archive() {
     mkdir "$folder"
     info "Extracting $filename into $folder ..."
     [ "$VERBOSE" ] && echo "Source dir: $(pwd)"
-    $cmd "$filename" $dir_flag "$folder"
+    $cmd "$filename" $dir_flag"$folder"
+    if ! find "$folder" -type f -executable | grep -q .
+    then
+        info "No executable in $folder."
+        num_files=$(find "$folder" -type f | wc -l)
+        if [ "$num_files" -eq 1 ]; then
+            # Get the single file in the folder
+            single_file=$(find "$folder" -type f)
+
+            # Rename the file
+            prog_name="${2#*/}"
+            mv "$single_file" "$folder/$prog_name"
+
+            # Make it executable
+            chmod +x "$folder/$prog_name"
+
+            echo "Renamed the file to '$prog_name' and made it executable."
+        else
+            echo "The folder does not contain exactly one file."
+        fi
+    fi
     # copy executables into $BINARY_DIR
     find "$folder" -executable -type f -print0 | xargs -0 -I{} cp {} "$BINARY_DIR" && find "$BINARY_DIR" -type f -exec chmod +x {} \;
     executables="$(find "$folder" -executable -type f)"
@@ -347,7 +378,7 @@ download_and_extract_archive() {
         [ -x "$filename" ] || chmod +x "$filename"
         cp "$filename" $BINARY_DIR && info "Copied $BOLD$filename$RESET$BLUE into $BINARY_DIR."
     else
-        extract_archive "$filename"
+        extract_archive "$filename" "$project"
     fi
     AT_LEAST_ON_BINARY_COPIED=1
 }
